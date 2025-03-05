@@ -1,121 +1,69 @@
-from fastapi import FastAPI, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from models import User, PasswordEntry
-import jwt
-from database import get_db
+from fastapi import FastAPI, Depends, HTTPException
+from sqlalchemy.orm import Session
+from models import Base, PasswordEntry
+from database import engine, get_db
 import hashlib
+import jwt
+import os
+from dotenv import load_dotenv
 from datetime import datetime, timedelta
-from sqlalchemy.orm import joinedload
-from sqlalchemy.orm import selectinload
-from database import engine
-from models import Base
 
-SECRET_KEY = "5dcad3ae1bf44eab3bdb0fbc7ff23510d5b330e78f8785af38af2376ac3750a3"
+load_dotenv()
+
+SECRET_KEY = os.getenv("SECRET_KEY", "c6f00c4c5a7eb6d0613cb1a65444257ac99753f6e5685afec5c15011b2a96f03")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 app = FastAPI()
 
-async def create_tables():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+Base.metadata.create_all(bind=engine)
 
-def hash_password(password: str) -> str:
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+def hash_password(password: str):
     return hashlib.sha256(password.encode()).hexdigest()
 
-def create_token(username: str):
-    expiration = datetime.utcnow() + timedelta(hours=1)
-    payload = {"sub": username, "exp": expiration}
-    return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
+def get_current_user(token: str):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
-@app.post("/register/")
-async def register(username: str, password: str, db: AsyncSession = Depends(get_db)):
-    hashed_pw = hash_password(password)
-    user = User(username=username, password=hashed_pw)
-    db.add(user)
-    await db.commit()
-    return {"msg": "User registered successfully"}
-
-@app.post("/login/")
-async def login(username: str, password: str, db: AsyncSession = Depends(get_db)):
-    stmt = select(User).where(User.username == username)
-    result = await db.execute(stmt)
-    user = result.scalars().first()
-
-    if not user or user.hashed_password != hash_password(password):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-
-    token = create_token(username)
-    return {"token": token}
-
+# Create a new password entry 
 @app.post("/passwords/")
-async def create_password(site_name: str, site_url: str, password: str, user_id: int, db: AsyncSession = Depends(get_db)):
-    hashed_pw = hash_password(password)
-    new_entry = PasswordEntry(site_name=site_name, site_url=site_url, encrypted_password=hashed_pw, user_id=user_id)
-    db.add(new_entry)
-    await db.commit()
-    return {"msg": "Password saved successfully"}
-
-# @app.get("/passwords/")
-# async def get_passwords(user_id: int, db: AsyncSession = Depends(get_db)):
-#     stmt = select(PasswordEntry).where(PasswordEntry.user_id == user_id)
-#     result = await db.execute(stmt)
-#     entries = result.scalars().all()
-#     return entries,user_id
+def create_password(email: str, website: str, password: str, db: Session = Depends(get_db)):
+    hashed_pwd = hash_password(password)
+    entry = PasswordEntry(email=email, website=website, hashed_password=hashed_pwd)
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return {"message": "Password saved successfully"}
 
 @app.get("/passwords/")
-async def get_passwords(user_id: int, db: AsyncSession = Depends(get_db)):
-    # Fetch user and related password entries
-    stmt = (
-        select(User)
-        .options(selectinload(User.password_entries))  # Correct relationship loading
-        .where(User.id == user_id)
-    )
-    result = await db.execute(stmt)
-    user = result.scalars().first()
+def get_passwords(db: Session = Depends(get_db)):
+    return db.query(PasswordEntry).all()
 
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    passwords_data = [
-        {
-            "site_name": entry.site_name,
-            "site_url": entry.site_url,
-            "password": entry.encrypted_password,  # Encrypted password
-        }
-        for entry in user.password_entries
-    ]
-
-    return {
-        "username": user.username,
-        "passwords": passwords_data
-    }
-
-@app.patch("/passwords/{password_id}")
-async def update_password(password_id: int, new_password: str, db: AsyncSession = Depends(get_db)):
-    stmt = select(PasswordEntry).where(PasswordEntry.id == password_id)
-    result = await db.execute(stmt)
-    entry = result.scalars().first()
-
+@app.patch("/passwords/{email}")
+def update_password(email: str, new_password: str, db: Session = Depends(get_db)):
+    entry = db.query(PasswordEntry).filter(PasswordEntry.email == email).first()
     if not entry:
-        raise HTTPException(status_code=404, detail="Password entry not found")
+        raise HTTPException(status_code=404, detail="Entry not found")
+    entry.hashed_password = hash_password(new_password)
+    db.commit()
+    return {"message": "Password updated successfully"}
 
-    entry.encrypted_password = hash_password(new_password)
-    await db.commit()
-    return {"msg": "Password updated successfully"}
-
-@app.delete("/passwords/{password_id}")
-async def delete_password(password_id: int, db: AsyncSession = Depends(get_db)):
-    stmt = select(PasswordEntry).where(PasswordEntry.id == password_id)
-    result = await db.execute(stmt)
-    entry = result.scalars().first()
-
+@app.delete("/passwords/{email}")
+def delete_password(email: str, db: Session = Depends(get_db)):
+    entry = db.query(PasswordEntry).filter(PasswordEntry.email == email).first()
     if not entry:
-        raise HTTPException(status_code=404, detail="Password entry not found")
-
-    await db.delete(entry)
-    await db.commit()
-    return {"msg": "Password deleted successfully"}
-
-@app.on_event("startup")
-async def on_startup():
-    await create_tables()
+        raise HTTPException(status_code=404, detail="Entry not found")
+    db.delete(entry)
+    db.commit()
+    return {"message": "Entry deleted successfully"}
