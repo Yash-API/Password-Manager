@@ -9,8 +9,7 @@ class PasswordEntry(Base):
     username = Column(String, unique=True, index=True)
     website = Column(String, index=True)
     hashed_password = Column(String)
-    # password = Column(String)
-    role = Column(String)
+    role = Column(String, default="user")
 
 class Token(BaseModel):
     access_token: str
@@ -31,10 +30,12 @@ class TokenData(BaseModel):
     username: str
     role: str
 
+
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True)
-    hashed_password = Column(String)
-    role = Column(String)
+    id = Column(Integer, primary_key=True, index=True)  # Primary Key added
+    username = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    role = Column(String, default="user")  # "user" or "master"
+

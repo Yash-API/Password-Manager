@@ -6,12 +6,13 @@ from typing import Annotated
 import hashlib
 import jwt
 import os
+from database import SessionLocal
+import hashlib
 from jwt.exceptions import InvalidTokenError
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from passlib.context import CryptContext
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-
 
 load_dotenv()
 
@@ -25,6 +26,29 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 app = FastAPI()
+
+MASTER_username = "admin@master.com"
+MASTER_PASSWORD = "SuperSecureMasterPassword"
+MASTER_ROLE = "master"
+
+def hash_password(password: str):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def create_master_user():
+    db = SessionLocal()
+    master_user = db.query(PasswordEntry).filter(PasswordEntry.username == MASTER_username).first()
+    
+    if not master_user:
+        hashed_pwd = hash_password(MASTER_PASSWORD)
+        new_master = PasswordEntry(username=MASTER_username, hashed_password=hashed_pwd, role=MASTER_ROLE)
+        db.add(new_master)
+        db.commit()
+        db.refresh(new_master)
+        print("Master user created successfully!")
+
+    db.close()
+
+create_master_user()
 
 def verify_password(plain_Password,hased_password):
     return pwd_context.verify(plain_Password,hased_password)
@@ -73,6 +97,12 @@ def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], db: Session 
         raise credentials_exception
     return user
 
+def get_current_admin(
+    current_user: Annotated[PasswordEntry, Depends(get_current_user)]
+):
+    if current_user.role != "master":
+        raise HTTPException(status_code=403, detail="Access denied! Admin only.")
+    return current_user
 
 def get_current_active_user(
     current_user: Annotated[PasswordEntry, Depends(get_current_user)]
@@ -82,18 +112,18 @@ def get_current_active_user(
 
 # Create a new password entry 
 @app.post("/register/")
-def register(username: str, website: str, password: str, role: str, db: Session = Depends(get_db)):
+def register(username: str, website: str, password: str,db: Session = Depends(get_db)):
     existing_user = db.query(PasswordEntry).filter(PasswordEntry.username == username).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="User already exists")
     hashed_pwd = hash_password(password)
-    entry = PasswordEntry(username=username, website=website, hashed_password=hashed_pwd , role=role)
+    entry = PasswordEntry(username=username, website=website, hashed_password=hashed_pwd)
     db.add(entry)
     db.commit()
     db.refresh(entry)
     return {"message": "Password saved successfully"}
 
-@app.post("/Login")
+@app.post("/token")
 async def login_for_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: Session = Depends(get_db),
@@ -105,13 +135,29 @@ async def login_for_access_token(
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    
+    # Generate token with role information
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user.username, "role": user.role}, expires_delta=access_token_expires
     )
+    
     return Token(access_token=access_token, token_type="bearer")
 
-@app.patch("/users/me/update-password/")
+@app.post("/admin/")
+def add_user(username: str, website: str, password: str, role: str, db: Session = Depends(get_db),
+             admin: PasswordEntry = Depends(get_current_admin)):
+    existing_user = db.query(PasswordEntry).filter(PasswordEntry.username == username).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="User already exists")
+    
+    hashed_pwd = hash_password(password)
+    new_user = PasswordEntry(username=username, website=website, hashed_password=hashed_pwd, role=role)
+    db.add(new_user)
+    db.commit()
+    return {"message": "User added successfully"}
+
+@app.patch("/admin/me/update-password/")
 def update_own_password(
     current_password: str,
     new_password: str,
@@ -132,21 +178,16 @@ def update_own_password(
     return {"message": "Password updated successfully"}
 
 
-
-# @app.post("/login/")
-# def login(username: str, password: str, db: Session = Depends(get_db)):
+@app.delete("/admin/delete-user/{username}")
+def delete_user(username: str, db: Session = Depends(get_db), admin: PasswordEntry = Depends(get_current_admin)):
+    user = db.query(PasswordEntry).filter(PasswordEntry.username == username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
     
-#     if PasswordEntry.role == "user":
-#         raise HTTPException(status_code=401, detail="Invalid credentials")
-#     else:
-#         user = db.query(PasswordEntry).filter(PasswordEntry.username == username).first()
-#         if not user or not hash_password(password) == user.hashed_password:
-#             raise HTTPException(status_code=401, detail="Invalid credentials")
-#     return {"message": "Login successful"}
+    db.delete(user)
+    db.commit()
+    return {"message": "User deleted successfully"}
 
-# @app.get("/passwords/")
-# def get_passwords(db: Session = Depends(get_db)):
-#     return db.query(PasswordEntry).all()
 
 @app.get("/users/me/")
 def read_users_me(current_user: Annotated[PasswordEntry, Depends(get_current_active_user)]):
@@ -163,20 +204,20 @@ def get_user_passwords(current_user: Annotated[PasswordEntry, Depends(get_curren
     return passwords
 
 
-@app.patch("/passwords/{username}")
-def update_password(username: str, new_password: str, db: Session = Depends(get_db)):
-    entry = db.query(PasswordEntry).filter(PasswordEntry.username == username).first()
-    if not entry:
-        raise HTTPException(status_code=404, detail="Entry not found")
-    entry.hashed_password = hash_password(new_password)
-    db.commit()
-    return {"message": "Password updated successfully"}
+# @app.patch("/passwords/{username}")
+# def update_password(username: str, new_password: str, db: Session = Depends(get_db)):
+#     entry = db.query(PasswordEntry).filter(PasswordEntry.username == username).first()
+#     if not entry:
+#         raise HTTPException(status_code=404, detail="Entry not found")
+#     entry.hashed_password = hash_password(new_password)
+#     db.commit()
+#     return {"message": "Password updated successfully"}
 
-@app.delete("/passwords/{username}")
-def delete_password(username: str, db: Session = Depends(get_db)):
-    entry = db.query(PasswordEntry).filter(PasswordEntry.username == username).first()
-    if not entry:
-        raise HTTPException(status_code=404, detail="Entry not found")
-    db.delete(entry)
-    db.commit()
-    return {"message": "Entry deleted successfully"}
+# @app.delete("/passwords/{username}")
+# def delete_password(username: str, db: Session = Depends(get_db)):
+#     entry = db.query(PasswordEntry).filter(PasswordEntry.username == username).first()
+#     if not entry:
+#         raise HTTPException(status_code=404, detail="Entry not found")
+#     db.delete(entry)
+#     db.commit()
+#     return {"message": "Entry deleted successfully"}
