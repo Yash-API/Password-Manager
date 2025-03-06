@@ -6,7 +6,7 @@ class PasswordEntry(Base):
     __tablename__ = "password_entries"
 
     id = Column(Integer, primary_key=True, index=True)
-    email = Column(String, unique=True, index=True)
+    username = Column(String, unique=True, index=True)
     website = Column(String, index=True)
     hashed_password = Column(String)
     # password = Column(String)
@@ -18,23 +18,23 @@ class Token(BaseModel):
 
 
 class UserCreate(BaseModel):
-    email: str
+    username: str
     password: str
     website: str
     role: str  # 'admin' or 'user'
 
 class UserLogin(BaseModel):
-    email: str
+    username: str
     password: str
 
 class TokenData(BaseModel):
-    email: str
+    username: str
     role: str
 
 class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    email = Column(String, unique=True, index=True)
+    username = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     role = Column(String)
