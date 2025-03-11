@@ -203,11 +203,56 @@ def register(email: str, password: str, website: str, db: Session = Depends(get_
     
     return {"message": "Registration successful"}
 
+@app.post("/add-websites-passwords/")
+def add_website_password(
+    website: str = Query(..., description="Website name"),
+    hashed_password: str = Query(..., description="Password for the website"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)  # Get logged-in user
+):
+    """
+    Allows both admin and regular users to add a website password.
+    Admins can add passwords for any user.
+    """
+
+    if not website or not hashed_password:
+        raise HTTPException(status_code=400, detail="Website and password are required.")
+
+    # Check if the website already exists for this user
+    existing_entry = db.query(PasswordEntry).filter(
+        PasswordEntry.user_id == current_user.id,
+        PasswordEntry.website == website
+    ).first()
+
+    if existing_entry:
+        raise HTTPException(status_code=400, detail="Website already exists for your account.")
+
+    # Hash the password
+    hashed_pwd = encrypt_password(hashed_password)
+
+    # Create a new password entry for the user
+    new_entry = PasswordEntry(
+        email=current_user.email, 
+        website=website, 
+        hashed_password=hashed_pwd,
+        user_id=current_user.id
+    )
+
+    db.add(new_entry)
+    db.commit()
+    db.refresh(new_entry)
+
+    return {
+        "message": "Website password added successfully!",
+        "website": website,
+        "success": True
+    }
+
 @app.put("/update-password/")
 def update_password(
     email: str,
     new_password: str, 
-    current_admin: User = Depends(get_current_admin), 
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     # import pdb; pdb.set_trace()
@@ -280,93 +325,33 @@ def delete_user(
     db.commit()
     return {"message": "User deleted successfully"}
 
-@app.post("/add-websites-passwords/")
-def add_website_password(
-    website: str = Query(..., description="Website name"),
-    hashed_password: str = Query(..., description="Password for the website"),
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Allows a logged-in user to add a single website with a password.
-    """
-
-    if not website or not hashed_password:
-        raise HTTPException(status_code=400, detail="Website and password are required.")
-
-    # Check if the website already exists for this user
-    existing_entry = db.query(PasswordEntry).filter(
-        PasswordEntry.user_id == current_user.id,
-        PasswordEntry.website == website
-    ).first()
-
-    if existing_entry:
-        raise HTTPException(status_code=400, detail="Website already exists for your account.")
-
-    # Store the original password in our insecure dictionary
-    PASSWORD_STORE[current_user.email] = hashed_password
-    
-    # Hash the password
-    hashed_pwd = encrypt_password(hashed_password)
-
-    # Create new entry linked to the current user
-    new_entry = PasswordEntry(
-        email=current_user.email, 
-        website=website, 
-        password=hashed_password,  # Store the actual password
-        hashed_password=hashed_pwd,
-        user_id=current_user.id
-    )
-    
-    db.add(new_entry)
-    db.commit()
-    db.refresh(new_entry)
-
-    return {
-        "message": "Website password added successfully!", 
-        "website": website,
-        "success": True
-    }
-
-@app.get("/fetch-all-data/")
-def fetch_all_data(
+@app.get("/get-all-users/")
+def get_all_users(
     db: Session = Depends(get_db),
-    admin: User = Depends(get_current_admin)
+    admin: User = Depends(get_current_admin)  # Only admins can access
 ):
     """
-    Fetch all users and all website-password entries.
-    Accessible only by admins.
+    Fetch all users along with their stored website passwords.
+    Only admins can access this data.
     """
     users = db.query(User).all()
-    users_data = [
-        {
+
+    all_users_data = []
+    
+    for user in users:
+        # Fetch all password entries for the user
+        passwords = db.query(PasswordEntry).filter(PasswordEntry.user_id == user.id).all()
+
+        # Structure user data
+        user_data = {
             "email": user.email,
             "role": user.role,
-            "website": user.website,
-            "password": decrypt_password(user.hashed_password)  # Decrypt password
-        } 
-        for user in users
-    ]
-
-    website_passwords = db.query(PasswordEntry).all()
-    website_password_data = [
-        {
-            "email": entry.email, 
-            "website": entry.website, 
-            "password": decrypt_password(entry.hashed_password)  # Decrypt password
+            "saved_websites": [
+                {"website": entry.website, "hashed_password": entry.hashed_password}
+                for entry in passwords
+            ]
         }
-        for entry in website_passwords
-    ]
+        
+        all_users_data.append(user_data)
 
-    return {
-        "users": users_data,
-        "website_password_entries": website_password_data
-    }
-
-@app.get("/get-password/{website}")
-async def get_password(website: str, db: Session = Depends(get_db)):
-    entry = db.query(PasswordEntry).filter(PasswordEntry.website == website).first()
-    if not entry:
-        raise HTTPException(status_code=404, detail="Password not found")
-    original_password = decrypt_password(entry.hashed_password)
-    return {"website": website, "password": original_password}
+    return {"message": "Users fetched successfully", "data": all_users_data, "success": True}
