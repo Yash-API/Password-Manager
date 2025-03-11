@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    ports:
+      - "8081:8081"
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=yash1009
+      - DB_NAME=Password
+      - DATABASE_URL=postgresql+psycopg2://postgres:yash1009@db:5432/Password
+      - SECRET_KEY=c6f00c4c5a7eb6d0613cb1a65444257ac99753f6e5685afec5c15011b2a96f03
+    depends_on:
+      - db
+    restart: always
+    volumes:
+      - ./:/app
+
+  db:
+    image: postgres:14
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=yash1009
+      - POSTGRES_DB=Password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+
+volumes:
+  postgres_data: 
