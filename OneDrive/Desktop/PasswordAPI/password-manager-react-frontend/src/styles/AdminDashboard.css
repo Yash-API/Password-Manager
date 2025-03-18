@@ -1,0 +1,371 @@
+.admin-dashboard-container {
+  min-height: 100vh;
+  background-color: #f5f5f5;
+}
+
+.admin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 2rem;
+  background-color: #c0392b;
+  color: white;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.admin-header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.user-section {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.welcome-message {
+  font-size: 0.875rem;
+}
+
+.dashboard-link {
+  padding: 0.5rem 1rem;
+  background-color: transparent;
+  color: white;
+  border: 1px solid white;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.dashboard-link:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.logout-btn {
+  padding: 0.5rem 1rem;
+  background-color: transparent;
+  color: white;
+  border: 1px solid white;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.logout-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.admin-content {
+  padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.admin-card {
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem;
+  border-bottom: 1px solid #eee;
+}
+
+.card-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #333;
+}
+
+.add-btn {
+  padding: 0.5rem 1rem;
+  background-color: #c0392b;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.add-btn:hover {
+  background-color: #a93226;
+}
+
+.add-user-form {
+  padding: 1.5rem;
+  border-bottom: 1px solid #eee;
+}
+
+.add-user-form h3 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  font-size: 1.125rem;
+  color: #333;
+}
+
+.form-group {
+  margin-bottom: 1.25rem;
+}
+
+label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #333;
+}
+
+input, select {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 1rem;
+}
+
+input:focus, select:focus {
+  outline: none;
+  border-color: #c0392b;
+  box-shadow: 0 0 0 2px rgba(192, 57, 43, 0.1);
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.cancel-btn {
+  padding: 0.5rem 1rem;
+  background-color: #f1f1f1;
+  color: #333;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.cancel-btn:hover {
+  background-color: #e0e0e0;
+}
+
+.save-btn {
+  padding: 0.5rem 1rem;
+  background-color: #c0392b;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.save-btn:hover {
+  background-color: #a93226;
+}
+
+.save-btn:disabled,
+.cancel-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.error-message {
+  margin: 1rem 1.5rem;
+  padding: 0.75rem;
+  background-color: #ffebee;
+  color: #c62828;
+  border-radius: 4px;
+  font-size: 0.875rem;
+}
+
+.success-message {
+  margin: 1rem 1.5rem;
+  padding: 0.75rem;
+  background-color: #e8f5e9;
+  color: #2e7d32;
+  border-radius: 4px;
+  font-size: 0.875rem;
+}
+
+.loading {
+  padding: 2rem;
+  text-align: center;
+  color: #666;
+}
+
+.no-users {
+  padding: 2rem;
+  text-align: center;
+  color: #666;
+}
+
+.user-list {
+  padding: 1.5rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  padding: 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+
+th {
+  font-weight: 500;
+  color: #666;
+}
+
+.admin-badge {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  background-color: #c0392b;
+  color: white;
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+.user-badge {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  background-color: #3498db;
+  color: white;
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.view-btn {
+  padding: 0.25rem 0.5rem;
+  background-color: #3498db;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.view-btn:hover {
+  background-color: #2980b9;
+}
+
+.delete-btn {
+  padding: 0.25rem 0.5rem;
+  background-color: #e74c3c;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.delete-btn:hover {
+  background-color: #c0392b;
+}
+
+/* Password Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.password-modal {
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  width: 100%;
+  max-width: 800px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #eee;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #333;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #666;
+}
+
+.close-btn:hover {
+  color: #333;
+}
+
+.modal-content {
+  padding: 1.5rem;
+}
+
+.password-cell {
+  max-width: 250px;
+}
+
+.password-display {
+  display: flex;
+  align-items: center;
+}
+
+.password-text {
+  font-family: monospace;
+}
+
+.password-dots {
+  color: #666;
+}
+
+.toggle-btn {
+  padding: 0.25rem 0.5rem;
+  background-color: #f1f1f1;
+  color: #333;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.toggle-btn:hover {
+  background-color: #e0e0e0;
+}
+
+.no-passwords {
+  padding: 1rem;
+  text-align: center;
+  color: #666;
+} 

@@ -25,7 +25,6 @@ class PasswordEntry(Base):
     email = Column(String, index=True)
     website = Column(String, index=True)
     hashed_password = Column(String)
-    role = Column(String, default="user")
 
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))  # ForeignKey to User
     user = relationship("User", back_populates="password_entries")  # Relationship
@@ -50,21 +49,20 @@ class UserUpdatePassword(BaseModel):
     old_password: str
     new_password: str
 
+ALLOWED_EMAIL_DOMAINS = {"gmail.com", "yahoo.com", "example.com"} 
+
 class UserCreate(BaseModel):
     email: EmailStr  # Ensures it is a valid email format
     password: str
     website: str
     role: Optional[str] = "user"
 
-    @validator("email")
+    @field_validator("email")
+    @classmethod
     def validate_email_domain(cls, value):
-        if "@" not in value:
-            raise ValueError("Invalid email format")
-        
         domain = value.split("@")[-1]
         if domain not in ALLOWED_EMAIL_DOMAINS:
             raise ValueError(f"Only emails from {', '.join(ALLOWED_EMAIL_DOMAINS)} are allowed")
-        
         return value
 
 class PasswordImport(BaseModel):

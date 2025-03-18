@@ -15,7 +15,7 @@ DB_USER = os.getenv("DB_USER", "postgres")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "yash1009")
 DB_NAME = os.getenv("DB_NAME", "Password")
 
-# Construct the DATABASE_URL using environment variables
+# Construct the DATABASE_URL using environment variables 
 DATABASE_URL = os.getenv(
     "DATABASE_URL", 
     f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"

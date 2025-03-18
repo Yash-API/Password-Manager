@@ -14,6 +14,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import EmailStr
 from cryptography.fernet import Fernet
 import base64
+from fastapi.middleware.cors import CORSMiddleware  # Import CORS middleware
 
 load_dotenv()
 
@@ -45,6 +46,16 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 app = FastAPI()
 
+# Configure CORS middleware with updated settings
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins temporarily for debugging
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"]
+)
+
 MASTER_email = "admin@master.com"
 MASTER_PASSWORD = "SuperSecureMasterPassword"
 MASTER_ROLE = "master"
@@ -59,7 +70,24 @@ def encrypt_password(hashed_password: str) -> str:
 
 # Decrypt Password Function
 def decrypt_password(encrypted_password: str) -> str:
-    return fernet.decrypt(encrypted_password.encode()).decode()
+    try:
+        if not encrypted_password:
+            return ""
+            
+        # Handle any whitespace or quotes
+        encrypted_password = encrypted_password.strip().strip('"\'')
+            
+        # Make sure input is bytes
+        if isinstance(encrypted_password, str):
+            encrypted_bytes = encrypted_password.encode()
+        else:
+            encrypted_bytes = encrypted_password
+            
+        # Decrypt the password
+        return fernet.decrypt(encrypted_bytes).decode()
+    except Exception as e:
+        print(f"Decryption error: {str(e)}")
+        return "Unable to decrypt (key mismatch or corrupted data)"
 
 # Completely rewrite the decrypt_password function to look up original passwords
 def get_original_password(email: str, hashed_password: str = None) -> str:
@@ -76,11 +104,12 @@ def create_master_user():
     master_user = db.query(User).filter(User.email == MASTER_email).first()
     
     if not master_user:
-        hashed_pwd = encrypt_password(MASTER_PASSWORD)
+        # For master user, store the password directly and also encrypt it
+        # This is for demonstration purposes only - in production, never store plain passwords
         new_master = User(
             email=MASTER_email, 
-            password=MASTER_PASSWORD,
-            hashed_password=hashed_pwd, 
+            password=MASTER_PASSWORD,  # Store the actual master password 
+            hashed_password=encrypt_password(MASTER_PASSWORD),  # Store the encrypted password
             role=MASTER_ROLE,
             website="admin"  # Add a default website to avoid null issues
         )
@@ -89,6 +118,12 @@ def create_master_user():
         db.refresh(new_master)
         print(f"Master user created successfully with ID: {new_master.id}")
     else:
+        # Ensure the master user has the correct password
+        if master_user.password != MASTER_PASSWORD:
+            master_user.password = MASTER_PASSWORD
+            master_user.hashed_password = encrypt_password(MASTER_PASSWORD)
+            db.commit()
+            print(f"Master user password updated for ID: {master_user.id}")
         print(f"Master user already exists with ID: {master_user.id}")
 
     db.close()
@@ -113,12 +148,20 @@ def get_user(db: Session, email: str):
 def authenticate_user(db: Session, email: str, password: str):
     user = get_user(db, email)
     if not user:
+        print(f"User not found: {email}")
         return False
     
-    # Simply compare with the stored plain password for demonstration
-    # In production, you should use a secure password hashing algorithm
+    # Special case for master user for debugging purposes
+    if email == MASTER_email and password == MASTER_PASSWORD:
+        print(f"Master user authenticated with direct password: {email}")
+        return user
+    
+    # Regular authentication for other users
     if user.password != password:
+        print(f"Password mismatch for user: {email}")
         return False
+    
+    print(f"User authenticated successfully: {email}")
     return user
 
 def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], db: Session = Depends(get_db)):
@@ -227,14 +270,17 @@ def add_website_password(
     if existing_entry:
         raise HTTPException(status_code=400, detail="Website already exists for your account.")
 
-    # Hash the password
-    hashed_pwd = encrypt_password(hashed_password)
+    # Store the raw password too (for demo purposes)
+    PASSWORD_STORE[f"{current_user.email}:{website}"] = hashed_password
+    
+    # Encrypt the password
+    encrypted_pwd = encrypt_password(hashed_password)
 
     # Create a new password entry for the user
     new_entry = PasswordEntry(
         email=current_user.email, 
         website=website, 
-        hashed_password=hashed_pwd,
+        hashed_password=encrypted_pwd,
         user_id=current_user.id
     )
 
@@ -271,25 +317,38 @@ def update_password(
     db.refresh(user)
 
     return {"message": "Password updated successfully"}
-    
+
 @app.post("/admin/create-master/")
-def create_master_user_api(email: str, password: str, db: Session = Depends(get_db), admin: PasswordEntry = Depends(get_current_admin)):
+def create_master_user_api(
+    email: str, 
+    password: str, 
+    db: Session = Depends(get_db), 
+    admin: User = Depends(get_current_admin)
+):
     # Check if user already exists
-    existing_user = db.query(PasswordEntry).filter(PasswordEntry.email == email).first()
+    existing_user = db.query(User).filter(User.email == email).first()
     if existing_user:
-        raise HTTPException(status_code=400, detail="Admin user already exists")
-
-    # Hash the password
-    hashed_password = encrypt_password(password)
-
-    # Create a new master admin user
-    new_master = PasswordEntry(email=email, hashed_password=hashed_password, role="master")
-
-    db.add(new_master)
-    db.commit()
-    db.refresh(new_master)
-
-    return {"message": "Master admin created successfully"}
+        raise HTTPException(status_code=400, detail="User already exists")
+    
+    try:
+        # Create a new master admin user
+        new_master = User(
+            email=email, 
+            password=password,  # Store the actual password
+            hashed_password=encrypt_password(password),  # Store the encrypted password
+            role="master",
+            website="admin"  # Default website for master users
+        )
+        
+        db.add(new_master)
+        db.commit()
+        db.refresh(new_master)
+        
+        return {"message": "Master admin created successfully", "user_id": new_master.id}
+    except Exception as e:
+        db.rollback()
+        print(f"Error creating master user: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create master user: {str(e)}")
 
 
 @app.post("/admin/")
@@ -301,15 +360,41 @@ def add_user(
     db: Session = Depends(get_db),
     admin: User = Depends(get_current_admin)
 ):
-    existing_user = db.query(PasswordEntry).filter(PasswordEntry.email == email).first()
+    # Check if user already exists in the User table
+    existing_user = db.query(User).filter(User.email == email).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="User already exists")
     
-    hashed_pwd = encrypt_password(hashed_password)
-    new_user = PasswordEntry(email=email, website=website, password=hashed_password, role=role)
-    db.add(new_user)
-    db.commit()
-    return {"message": "User added successfully"}
+    # Create a new User with the provided credentials
+    try:
+        new_user = User(
+            email=email, 
+            website=website,
+            password=hashed_password,  # Store the actual password
+            hashed_password=encrypt_password(hashed_password),  # Store the encrypted password
+            role=role  # "user" or "master"
+        )
+        
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        
+        # Also add a default password entry for the website
+        new_entry = PasswordEntry(
+            email=email,
+            website=website,
+            hashed_password=encrypt_password(hashed_password),
+            user_id=new_user.id
+        )
+        
+        db.add(new_entry)
+        db.commit()
+        
+        return {"message": "User added successfully", "user_id": new_user.id}
+    except Exception as e:
+        db.rollback()
+        print(f"Error adding user: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create user: {str(e)}")
 
 @app.delete("/admin/delete-user/{email}")
 def delete_user(
@@ -317,10 +402,19 @@ def delete_user(
     db: Session = Depends(get_db), 
     admin: User = Depends(get_current_admin)
 ):
-    user = db.query(PasswordEntry).filter(PasswordEntry.email == email).first()
+    # Find the user in the User table
+    user = db.query(User).filter(User.email == email).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
+    # Don't allow deleting the current admin
+    if user.email == admin.email:
+        raise HTTPException(status_code=400, detail="Cannot delete your own admin account")
+    
+    # Delete all password entries for the user first (though this should happen via cascade)
+    db.query(PasswordEntry).filter(PasswordEntry.user_id == user.id).delete()
+    
+    # Then delete the user
     db.delete(user)
     db.commit()
     return {"message": "User deleted successfully"}
@@ -341,17 +435,57 @@ def get_all_users(
     for user in users:
         # Fetch all password entries for the user
         passwords = db.query(PasswordEntry).filter(PasswordEntry.user_id == user.id).all()
+        
+        # For each password, try to decrypt it
+        password_entries = []
+        for entry in passwords:
+            try:
+                decrypted = decrypt_password(entry.hashed_password)
+            except Exception as e:
+                decrypted = "Decryption failed"
+                
+            password_entries.append({
+                "website": entry.website,
+                "password": decrypted  # Renamed from hashed_password to password
+            })
 
         # Structure user data
         user_data = {
             "email": user.email,
             "role": user.role,
-            "saved_websites": [
-                {"website": entry.website, "hashed_password": entry.hashed_password}
-                for entry in passwords
-            ]
+            "saved_websites": password_entries
         }
         
         all_users_data.append(user_data)
 
     return {"message": "Users fetched successfully", "data": all_users_data, "success": True}
+
+@app.get("/get-user-passwords/")
+def get_user_passwords(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)  # Get logged-in user
+):
+    """
+    Fetch all password entries for the current logged-in user.
+    """
+    # Fetch all password entries for the user
+    password_entries = db.query(PasswordEntry).filter(PasswordEntry.user_id == current_user.id).all()
+
+    passwords = []
+    for entry in password_entries:
+        try:
+            # Try to decrypt the password - for demonstration purposes
+            decrypted_password = decrypt_password(entry.hashed_password)
+        except Exception as e:
+            # If decryption fails, just use the encrypted value
+            print(f"Decryption failed for {entry.website}: {str(e)}")
+            decrypted_password = "Unable to decrypt" 
+
+        # For the frontend, we'll return both website and password
+        password_data = {
+            "website": entry.website,
+            "password": decrypted_password  # Send decrypted password to frontend
+        }
+        passwords.append(password_data)
+
+    return {"message": "Passwords fetched successfully", "passwords": passwords, "success": True}
