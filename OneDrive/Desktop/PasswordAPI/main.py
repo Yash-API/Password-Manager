@@ -235,7 +235,6 @@ def register(email: str, password: str, website: str, db: Session = Depends(get_
     hashed_pwd = encrypt_password(password)
     entry = User(
         email=email, 
-        website=website, 
         password=password,  # Store the actual password 
         hashed_password=hashed_pwd,  # Store the encrypted password
         role="user"  # Default role
@@ -270,16 +269,21 @@ def add_website_password(
     if existing_entry:
         raise HTTPException(status_code=400, detail="Website already exists for your account.")
 
-    # Store the raw password too (for demo purposes)
-    PASSWORD_STORE[f"{current_user.email}:{website}"] = hashed_password
-    
+    # Find the last user-specific ID and increment it
+    last_entry = db.query(PasswordEntry).filter(
+        PasswordEntry.user_id == current_user.id
+    ).order_by(PasswordEntry.user_specific_id.desc()).first()
+
+    user_specific_id = 1 if last_entry is None else last_entry.user_specific_id + 1  # Reset ID for each user
+
     # Encrypt the password
     encrypted_pwd = encrypt_password(hashed_password)
 
     # Create a new password entry for the user
     new_entry = PasswordEntry(
-        email=current_user.email, 
-        website=website, 
+        user_specific_id=user_specific_id,  # Assign user-specific ID
+        email=current_user.email,
+        website=website,
         hashed_password=encrypted_pwd,
         user_id=current_user.id
     )
@@ -291,8 +295,10 @@ def add_website_password(
     return {
         "message": "Website password added successfully!",
         "website": website,
+        "user_specific_id": user_specific_id,  # Return user-specific ID
         "success": True
     }
+
 
 @app.put("/update-password/")
 def update_password(
@@ -419,6 +425,22 @@ def delete_user(
     db.commit()
     return {"message": "User deleted successfully"}
 
+@app.delete("/delete-password-entry/{user_specific_id}")
+def delete_password_entry(user_specific_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # Fetch the password entry
+    entry = db.query(PasswordEntry).filter(
+        PasswordEntry.user_specific_id == user_specific_id,
+        PasswordEntry.user_id == current_user.id  # Ensure the user owns the entry
+    ).first()
+
+    if not entry:
+        raise HTTPException(status_code=404, detail="Password entry not found or unauthorized")
+
+    # Delete entry
+    db.delete(entry)
+    db.commit()
+    return {"message": "Password entry deleted successfully"}
+
 @app.get("/get-all-users/")
 def get_all_users(
     db: Session = Depends(get_db),
@@ -483,9 +505,95 @@ def get_user_passwords(
 
         # For the frontend, we'll return both website and password
         password_data = {
+            "id": entry.id,
+            "user_specific_id": entry.user_specific_id,
             "website": entry.website,
             "password": decrypted_password  # Send decrypted password to frontend
         }
         passwords.append(password_data)
 
     return {"message": "Passwords fetched successfully", "passwords": passwords, "success": True}
+
+@app.put("/admin/update-user-password/")
+def update_user_password(
+    email: str,
+    website: str,
+    new_password: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Admin endpoint to update a specific user's website password.
+    """
+    # Ensure the current user is an admin
+    if current_user.role != "master":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized. Admin access required."
+        )
+    
+    # Find the user by email
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User with email {email} not found"
+        )
+    
+    # Find the password entry for this user and website
+    entry = db.query(PasswordEntry).filter(
+        PasswordEntry.user_id == user.id,
+        PasswordEntry.website == website
+    ).first()
+    
+    if not entry:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Website {website} not found for user {email}"
+        )
+    
+    # Encrypt the new password
+    encrypted_password = encrypt_password(new_password)
+    
+    # Update the password
+    entry.hashed_password = encrypted_password
+    db.commit()
+    
+    return {
+        "message": f"Password for {website} updated successfully for user {email}",
+        "success": True
+    }
+
+@app.put("/update-website-password/")
+def update_website_password(
+    website: str,
+    new_password: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Update the password for a specific website for the current logged-in user.
+    """
+    # Find the password entry for this user and website
+    entry = db.query(PasswordEntry).filter(
+        PasswordEntry.user_id == current_user.id,
+        PasswordEntry.website == website
+    ).first()
+    
+    if not entry:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Website {website} not found in your saved passwords"
+        )
+    
+    # Encrypt the new password
+    encrypted_password = encrypt_password(new_password)
+    
+    # Update the password
+    entry.hashed_password = encrypted_password
+    db.commit()
+    
+    return {
+        "message": f"Password for {website} updated successfully",
+        "success": True
+    }

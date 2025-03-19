@@ -22,6 +22,7 @@ class PasswordEntry(Base):
     __tablename__ = "password_entries"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_specific_id = Column(Integer, index=True)
     email = Column(String, index=True)
     website = Column(String, index=True)
     hashed_password = Column(String)
@@ -33,7 +34,9 @@ class Website(Base):
     __tablename__ = "websites"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_specific_id = Column(Integer, index=True) 
     website = Column(String, unique=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
 
 
 # Pydantic Schemas for API validation

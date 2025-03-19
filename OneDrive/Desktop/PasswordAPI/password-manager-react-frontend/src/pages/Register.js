@@ -7,7 +7,6 @@ const Register = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [website, setWebsite] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
@@ -17,7 +16,7 @@ const Register = () => {
     e.preventDefault();
     
     // Validate form
-    if (!email || !password || !confirmPassword || !website) {
+    if (!email || !password || !confirmPassword) {
       setError('Please fill in all fields');
       return;
     }
@@ -31,7 +30,7 @@ const Register = () => {
     setError('');
     
     try {
-      const result = await authService.register(email, password, website);
+      const result = await authService.register(email, password);
       
       if (result.message === 'Registration successful') {
         // Show success message
@@ -76,19 +75,6 @@ const Register = () => {
               onChange={(e) => setEmail(e.target.value)}
               disabled={loading || success}
               required
-            />
-          </div>
-          
-          <div className="form-group">
-            <label htmlFor="website">Default Website</label>
-            <input
-              type="text"
-              id="website"
-              value={website}
-              onChange={(e) => setWebsite(e.target.value)}
-              disabled={loading || success}
-              required
-              placeholder="e.g., facebook.com"
             />
           </div>
           

@@ -82,11 +82,11 @@ export const authService = {
   },
 
   // Register user
-  async register(email, password, website) {
+  async register(email, password ) {
     try {
       // Change to query parameters format which FastAPI will accept
       const response = await axiosInstance.post('/register/', null, {
-        params: { email, password, website }
+        params: { email, password }
       });
       
       return response.data;
@@ -222,14 +222,31 @@ export const passwordService = {
   },
 
   // Update user password
-  async updatePassword(email, newPassword) {
+  async updatePassword(email, newPassword, userSpecificId) {
     try {
-      // Change to query parameters format which FastAPI will accept
-      const response = await axiosInstance.put('/update-password/', null, {
-        params: { email, new_password: newPassword }
+      console.log('Updating password with params:', { 
+        email, 
+        new_password: newPassword,
+        user_specific_id: userSpecificId 
       });
       
-      return response.data;
+      // Add userSpecificId to params
+      const response = await axiosInstance.put('/update-password/', null, {
+        params: { 
+          email, 
+          new_password: newPassword,
+          user_specific_id: userSpecificId 
+        }
+      });
+      
+      console.log('Password update response:', response.data);
+      
+      // Store the actual updated password in the response for direct use
+      return { 
+        success: true, 
+        message: response.data.message,
+        updatedPassword: newPassword // Include the new password in the response
+      };
     } catch (error) {
       console.error('Update password error:', error);
       
@@ -237,6 +254,71 @@ export const passwordService = {
         // Token expired or invalid
         authService.logout();
         throw new Error('Session expired. Please login again.');
+      }
+      
+      if (error.response) {
+        throw new Error(error.response.data.detail || 'Failed to update password');
+      } else {
+        throw new Error(error.message || 'Network error');
+      }
+    }
+  },
+
+  // Delete password
+  async deletePassword(userSpecificId) {
+    try {
+      const response = await axiosInstance.delete(`/delete-password-entry/${userSpecificId}`);
+      return { success: true, message: response.data.message };
+    } catch (error) {
+      console.error('Delete password error:', error);
+      
+      if (error.response && error.response.status === 401) {
+        // Token expired or invalid
+        authService.logout();
+        throw new Error('Session expired. Please login again.');
+      }
+      
+      if (error.response) {
+        throw new Error(error.response.data.detail || 'Failed to delete password');
+      } else {
+        throw new Error(error.message || 'Network error');
+      }
+    }
+  },
+
+  // Update user website password
+  async updateWebsitePassword(website, newPassword) {
+    try {
+      console.log('Updating website password with params:', { 
+        website,
+        new_password: newPassword
+      });
+      
+      const response = await axiosInstance.put('/update-website-password/', null, {
+        params: { 
+          website, 
+          new_password: newPassword
+        }
+      });
+      
+      console.log('Website password update response:', response.data);
+      
+      return { 
+        success: true, 
+        message: response.data.message,
+        updatedPassword: newPassword // Include the new password in the response
+      };
+    } catch (error) {
+      console.error('Update website password error:', error);
+      
+      if (error.response && error.response.status === 401) {
+        // Token expired or invalid
+        authService.logout();
+        throw new Error('Session expired. Please login again.');
+      }
+      
+      if (error.response && error.response.status === 404) {
+        throw new Error(error.response.data.detail || 'Website not found');
       }
       
       if (error.response) {
@@ -277,13 +359,12 @@ export const adminService = {
   },
 
   // Add user
-  async addUser(email, website, password, role) {
+  async addUser(email, password, role) {
     try {
       // Change to query parameters format which FastAPI will accept
       const response = await axiosInstance.post('/admin/', null, {
         params: { 
-          email, 
-          website, 
+          email,
           hashed_password: password, 
           role 
         }
@@ -398,11 +479,63 @@ export const adminService = {
         throw new Error(error.message || 'Network error');
       }
     }
+  },
+  
+  // Update user's website password (for admin)
+  async updateUserWebsitePassword(email, website, newPassword) {
+    try {
+      console.log('Admin updating password with params:', { 
+        email, 
+        website,
+        new_password: newPassword
+      });
+      
+      const response = await axiosInstance.put('/admin/update-user-password/', null, {
+        params: { 
+          email, 
+          website,
+          new_password: newPassword
+        }
+      });
+      
+      console.log('Admin password update response:', response.data);
+      
+      return { 
+        success: true, 
+        message: response.data.message,
+        updatedPassword: newPassword // Include the new password in the response
+      };
+    } catch (error) {
+      console.error('Admin update password error:', error);
+      
+      if (error.response && error.response.status === 401) {
+        // Token expired or invalid
+        authService.logout();
+        throw new Error('Session expired. Please login again.');
+      }
+      
+      if (error.response && error.response.status === 403) {
+        throw new Error('Access denied. Admin only.');
+      }
+      
+      if (error.response && error.response.status === 404) {
+        throw new Error(error.response.data.detail || 'User or website not found');
+      }
+      
+      if (error.response) {
+        throw new Error(error.response.data.detail || 'Failed to update password');
+      } else {
+        throw new Error(error.message || 'Network error');
+      }
+    }
   }
 };
 
-export default {
+// Create named object before exporting
+const apiServices = {
   auth: authService,
   password: passwordService,
   admin: adminService
-}; 
+};
+
+export default apiServices; 

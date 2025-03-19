@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { authService, adminService } from '../services/api';
+import { authService, adminService, passwordService } from '../services/api';
 import '../styles/AdminDashboard.css';
 
 const AdminDashboard = () => {
@@ -10,6 +10,9 @@ const AdminDashboard = () => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [visiblePasswordIndex, setVisiblePasswordIndex] = useState(null);
+  const [deletingPasswordId, setDeletingPasswordId] = useState(null);
+  const [updatingPasswordId, setUpdatingPasswordId] = useState(null);
+  const [newPasswordValue, setNewPasswordValue] = useState('');
   
   // Form state for adding a new user
   const [newUser, setNewUser] = useState({
@@ -52,6 +55,16 @@ const AdminDashboard = () => {
     }
   };
   
+  // Generate random password
+  const generateRandomPassword = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()-_=+';
+    let password = '';
+    for (let i = 0; i < 12; i++) {
+      password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setNewUser({ ...newUser, password });
+  };
+  
   // Handle form input change for adding a new user
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -62,8 +75,8 @@ const AdminDashboard = () => {
   const handleAddUser = async (e) => {
     e.preventDefault();
     
-    if (!newUser.email || !newUser.website || !newUser.password) {
-      setError('All fields are required');
+    if (!newUser.email || !newUser.password) {
+      setError('Email and password are required');
       return;
     }
     
@@ -74,7 +87,6 @@ const AdminDashboard = () => {
     try {
       const response = await adminService.addUser(
         newUser.email,
-        newUser.website,
         newUser.password,
         newUser.role
       );
@@ -91,6 +103,11 @@ const AdminDashboard = () => {
         
         // Refresh the user list
         await fetchAllUsers();
+        
+        // Clear success message after 3 seconds
+        setTimeout(() => {
+          setSuccess('');
+        }, 3000);
       } else {
         setError('Failed to add user');
       }
@@ -119,6 +136,11 @@ const AdminDashboard = () => {
         
         // Refresh the user list
         await fetchAllUsers();
+        
+        // Clear success message after 3 seconds
+        setTimeout(() => {
+          setSuccess('');
+        }, 3000);
       } else {
         setError('Failed to delete user');
       }
@@ -126,6 +148,49 @@ const AdminDashboard = () => {
       setError(err.message || 'An error occurred while deleting the user');
     } finally {
       setLoading(false);
+    }
+  };
+  
+  // Handle password deletion
+  const handleDeletePassword = async (userSpecificId, website) => {
+    if (!window.confirm(`Are you sure you want to delete the password for ${website}?`)) {
+      return;
+    }
+    
+    setDeletingPasswordId(userSpecificId);
+    setError('');
+    setSuccess('');
+    
+    try {
+      const response = await passwordService.deletePassword(userSpecificId);
+      
+      if (response.success) {
+        setSuccess(`Password for ${website} deleted successfully!`);
+        
+        // Refresh the user data
+        await fetchAllUsers();
+        
+        // If we're viewing a user's passwords, update the selected user
+        if (selectedUser) {
+          const updatedUser = users.find(u => u.email === selectedUser.email);
+          if (updatedUser) {
+            setSelectedUser(updatedUser);
+          } else {
+            setSelectedUser(null);
+          }
+        }
+        
+        // Clear success message after 3 seconds
+        setTimeout(() => {
+          setSuccess('');
+        }, 3000);
+      } else {
+        setError('Failed to delete password');
+      }
+    } catch (err) {
+      setError(err.message || 'An error occurred while deleting the password');
+    } finally {
+      setDeletingPasswordId(null);
     }
   };
   
@@ -175,6 +240,11 @@ const AdminDashboard = () => {
         
         // Refresh the user list
         await fetchAllUsers();
+        
+        // Clear success message after 3 seconds
+        setTimeout(() => {
+          setSuccess('');
+        }, 3000);
       } else {
         setError('Failed to update user role');
       }
@@ -195,6 +265,108 @@ const AdminDashboard = () => {
   const cancelEditingRole = () => {
     setEditingUser(null);
     setNewRole('');
+  };
+  
+  // Start updating password
+  const startUpdatingPassword = (entry) => {
+    setUpdatingPasswordId(entry.user_specific_id);
+    setNewPasswordValue('');
+  };
+
+  // Cancel updating password
+  const cancelUpdatingPassword = () => {
+    setUpdatingPasswordId(null);
+    setNewPasswordValue('');
+  };
+
+  // Handle password update
+  const handleUpdatePassword = async (entry) => {
+    if (!newPasswordValue) {
+      setError('New password is required');
+      return;
+    }
+    
+    setLoading(true);
+    setError('');
+    setSuccess('');
+    
+    try {
+      // Use the new admin-specific method for updating passwords by website
+      const response = await adminService.updateUserWebsitePassword(
+        selectedUser.email,
+        entry.website,
+        newPasswordValue
+      );
+      
+      if (response.success) {
+        setSuccess(`Password for ${entry.website} updated successfully!`);
+        setUpdatingPasswordId(null);
+        setNewPasswordValue('');
+        
+        // Update the user passwords directly in state first for immediate feedback
+        if (selectedUser) {
+          // Create a new user object with updated password
+          const updatedUser = { ...selectedUser };
+          
+          // Update the password in the saved_websites array
+          updatedUser.saved_websites = selectedUser.saved_websites.map(website => {
+            if (website.website === entry.website) {
+              return { ...website, password: response.updatedPassword };
+            }
+            return website;
+          });
+          
+          // Update the selectedUser state
+          setSelectedUser(updatedUser);
+          
+          // Also update in the users array
+          const updatedUsers = users.map(user => {
+            if (user.email === selectedUser.email) {
+              return updatedUser;
+            }
+            return user;
+          });
+          setUsers(updatedUsers);
+          
+          // Find the index of the updated password to show it
+          const updatedIndex = updatedUser.saved_websites.findIndex(
+            p => p.website === entry.website
+          );
+          
+          if (updatedIndex !== -1) {
+            // Show the updated password
+            setVisiblePasswordIndex(updatedIndex);
+            
+            // Hide the password after 3 seconds
+            setTimeout(() => {
+              setVisiblePasswordIndex(null);
+            }, 3000);
+          }
+          
+          // Also fetch from server to ensure data is synced
+          const allUsersResponse = await adminService.getAllUsers();
+          if (allUsersResponse.success) {
+            setUsers(allUsersResponse.data || []);
+            // Update the selected user with fresh data
+            const freshUser = allUsersResponse.data.find(u => u.email === selectedUser.email);
+            if (freshUser) {
+              setSelectedUser(freshUser);
+            }
+          }
+        }
+        
+        // Clear success message after 3 seconds
+        setTimeout(() => {
+          setSuccess('');
+        }, 3000);
+      } else {
+        setError('Failed to update password');
+      }
+    } catch (err) {
+      setError(err.message || 'An error occurred while updating the password');
+    } finally {
+      setLoading(false);
+    }
   };
   
   // Clear messages after 3 seconds
@@ -249,33 +421,32 @@ const AdminDashboard = () => {
                     onChange={handleInputChange}
                     disabled={loading}
                     required
-                  />
-                </div>
-                
-                <div className="form-group">
-                  <label htmlFor="website">Default Website</label>
-                  <input
-                    type="text"
-                    id="website"
-                    name="website"
-                    value={newUser.website}
-                    onChange={handleInputChange}
-                    disabled={loading}
-                    required
+                    placeholder="user@example.com"
                   />
                 </div>
                 
                 <div className="form-group">
                   <label htmlFor="password">Password</label>
-                  <input
-                    type="password"
-                    id="password"
-                    name="password"
-                    value={newUser.password}
-                    onChange={handleInputChange}
-                    disabled={loading}
-                    required
-                  />
+                  <div className="password-input-group">
+                    <input
+                      type="text"
+                      id="password"
+                      name="password"
+                      value={newUser.password}
+                      onChange={handleInputChange}
+                      disabled={loading}
+                      required
+                      placeholder="Enter password"
+                    />
+                    <button 
+                      type="button"
+                      className="generate-btn"
+                      onClick={generateRandomPassword}
+                      disabled={loading}
+                    >
+                      Generate
+                    </button>
+                  </div>
                 </div>
                 
                 <div className="form-group">
@@ -317,8 +488,17 @@ const AdminDashboard = () => {
           {loading && !showAddForm ? (
             <div className="loading">Loading users...</div>
           ) : users.length === 0 ? (
-            <div className="no-users">
-              No users found. Click "Add New User" to create one.
+            <div className="no-passwords">
+              <div className="empty-state">
+                <i className="empty-icon">👤</i>
+                <p>No users found.</p>
+                <button 
+                  className="add-btn-empty" 
+                  onClick={() => setShowAddForm(true)}
+                >
+                  Add Your First User
+                </button>
+              </div>
             </div>
           ) : (
             <div className="user-list">
@@ -334,7 +514,12 @@ const AdminDashboard = () => {
                 <tbody>
                   {users.map((user, index) => (
                     <tr key={index}>
-                      <td>{user.email}</td>
+                      <td className="email-cell">
+                        <span className="email-icon">
+                          {user.email.charAt(0).toUpperCase()}
+                        </span>
+                        {user.email}
+                      </td>
                       <td>
                         {editingUser?.email === user.email ? (
                           <select 
@@ -346,7 +531,7 @@ const AdminDashboard = () => {
                             <option value="master">Admin</option>
                           </select>
                         ) : (
-                          <span className={user.role === 'master' ? 'admin-badge' : 'user-badge'}>
+                          <span className={`user-role ${user.role === 'master' ? 'role-master' : 'role-user'}`}>
                             {user.role}
                           </span>
                         )}
@@ -356,14 +541,14 @@ const AdminDashboard = () => {
                         {editingUser?.email === user.email ? (
                           <>
                             <button 
-                              className="save-btn" 
+                              className="save-btn btn" 
                               onClick={() => handleRoleChange(user, newRole)}
                               disabled={loading || newRole === user.role}
                             >
                               Save
                             </button>
                             <button 
-                              className="cancel-btn" 
+                              className="cancel-btn btn" 
                               onClick={cancelEditingRole}
                               disabled={loading}
                             >
@@ -373,15 +558,17 @@ const AdminDashboard = () => {
                         ) : (
                           <>
                             <button 
-                              className="edit-role-btn" 
+                              className="edit-role-btn btn" 
                               onClick={() => startEditingRole(user)}
                               disabled={userInfo?.sub === user.email}
+                              title="Change user role"
                             >
                               Change Role
                             </button>
                             <button 
-                              className="view-btn" 
+                              className="view-btn btn" 
                               onClick={() => handleViewUserPasswords(user)}
+                              title="View user passwords"
                             >
                               View Passwords
                             </button>
@@ -389,8 +576,9 @@ const AdminDashboard = () => {
                             {/* Don't allow deletion of the current admin user */}
                             {(user.role !== 'master' || userInfo?.sub !== user.email) && (
                               <button 
-                                className="delete-btn" 
+                                className="delete-btn btn" 
                                 onClick={() => handleDeleteUser(user.email)}
+                                title="Delete user"
                               >
                                 Delete
                               </button>
@@ -407,53 +595,106 @@ const AdminDashboard = () => {
         </div>
       </main>
       
-      {/* Password Modal */}
+      {/* User Passwords Modal */}
       {selectedUser && (
-        <div className="modal-overlay">
-          <div className="password-modal">
+        <div className="modal-backdrop" onClick={handleCloseModal}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3>Passwords for {selectedUser.email}</h3>
               <button className="close-btn" onClick={handleCloseModal}>&times;</button>
             </div>
-            
-            <div className="modal-content">
-              {selectedUser.saved_websites?.length > 0 ? (
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Website</th>
-                      <th>Password</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selectedUser.saved_websites.map((entry, index) => (
-                      <tr key={index}>
-                        <td>{entry.website}</td>
-                        <td className="password-cell">
-                          <div className="password-display">
-                            {visiblePasswordIndex === index ? (
-                              <span className="password-text">{entry.password}</span>
-                            ) : (
-                              <span className="password-dots">••••••••••</span>
-                            )}
-                          </div>
-                        </td>
-                        <td>
-                          <button 
-                            className="toggle-btn" 
-                            onClick={() => togglePasswordVisibility(index)}
-                          >
-                            {visiblePasswordIndex === index ? 'Hide' : 'Show'}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : (
+            <div className="modal-body">
+              {error && <div className="error-message">{error}</div>}
+              {success && <div className="success-message">{success}</div>}
+              
+              {selectedUser.saved_websites?.length === 0 ? (
                 <div className="no-passwords">
                   This user has no saved passwords.
+                </div>
+              ) : (
+                <div className="user-passwords">
+                  {selectedUser.saved_websites?.map((entry, index) => (
+                    <div className="password-item" key={index}>
+                      <div className="website-info">
+                        <span className="website-favicon">
+                          {entry.website.charAt(0).toUpperCase()}
+                        </span>
+                        <span>{entry.website}</span>
+                      </div>
+                      <div className="password-value">
+                        {updatingPasswordId === entry.user_specific_id ? (
+                          <div className="password-input-group">
+                            <input
+                              type="text"
+                              value={newPasswordValue}
+                              onChange={(e) => setNewPasswordValue(e.target.value)}
+                              placeholder="Enter new password"
+                              disabled={loading}
+                            />
+                            <button 
+                              type="button"
+                              className="generate-btn"
+                              onClick={generateRandomPassword}
+                              disabled={loading}
+                            >
+                              Generate
+                            </button>
+                          </div>
+                        ) : (
+                          visiblePasswordIndex === index ? (
+                            <span className="password-text">{entry.password}</span>
+                          ) : (
+                            <span className="password-dots">••••••••••</span>
+                          )
+                        )}
+                      </div>
+                      <div className="password-actions">
+                        {updatingPasswordId === entry.user_specific_id ? (
+                          <>
+                            <button 
+                              className="save-btn btn" 
+                              onClick={() => handleUpdatePassword(entry)}
+                              disabled={loading || !newPasswordValue}
+                            >
+                              {loading ? 'Saving...' : 'Save'}
+                            </button>
+                            <button 
+                              className="cancel-btn btn" 
+                              onClick={cancelUpdatingPassword}
+                              disabled={loading}
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button 
+                              className="toggle-btn btn" 
+                              onClick={() => togglePasswordVisibility(index)}
+                              title={visiblePasswordIndex === index ? "Hide password" : "Show password"}
+                            >
+                              {visiblePasswordIndex === index ? 'Hide' : 'Show'}
+                            </button>
+                            <button 
+                              className="edit-btn btn" 
+                              onClick={() => startUpdatingPassword(entry)}
+                              title="Update password"
+                            >
+                              Update
+                            </button>
+                            <button 
+                              className="delete-password-btn btn" 
+                              onClick={() => handleDeletePassword(entry.user_specific_id, entry.website)}
+                              disabled={deletingPasswordId === entry.user_specific_id}
+                              title="Delete password"
+                            >
+                              {deletingPasswordId === entry.user_specific_id ? 'Deleting...' : 'Delete'}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
