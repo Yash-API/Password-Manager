@@ -1,0 +1,13 @@
+{
+  "name": "Yash Sathwara",
+  "email": "yash@example.com",
+  "contact": "9909156177",
+  "department": "IT",
+  "role": "python developer",
+  "salary": 7000,
+  "joining_date": "2025-03-01",
+  "leave_date": null,
+  "attendance": "Present",
+  "holidays": 0,
+  "password": "Yash"
+}
